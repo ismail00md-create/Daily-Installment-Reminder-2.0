@@ -1,0 +1,7 @@
+
+# --- DO NOT COMMIT KEYS ---
+*.keystore
+*.jks
+**/keystore_base64*.txt
+**/keystore_base64*.zip
+base64 text
