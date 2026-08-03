@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Daily Installment Reminder</string>
+    <string name="title_activity_main">Daily Installment Reminder</string>
+    <string name="package_name">io.github.ismail00md.dailyinstallmentreminder</string>
+    <string name="custom_url_scheme">io.github.ismail00md.dailyinstallmentreminder</string>
+</resources>
