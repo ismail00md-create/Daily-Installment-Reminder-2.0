@@ -1,30 +1,43 @@
 (function () {
   const RE = /(?:\+?91[\s-]?)?[6-9]\d{9}/g;
+  let BulkSmsProxy = null;
+
+  function getCap() {
+    return globalThis.Capacitor || window.Capacitor || null;
+  }
 
   function plugin() {
-    return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BulkSms;
+    const Cap = getCap();
+    if (!Cap) return null;
+
+    // Best: create proxy via registerPlugin
+    if (!BulkSmsProxy && typeof Cap.registerPlugin === "function") {
+      try {
+        BulkSmsProxy = Cap.registerPlugin("BulkSms");
+      } catch (e) {}
+    }
+    if (BulkSmsProxy) return BulkSmsProxy;
+
+    // Fallback: try direct plugins bag
+    const P = Cap.Plugins || {};
+    return P.BulkSms || P["BulkSms"] || P.bulksms || null;
   }
 
-  function uniq(arr) {
-    return Array.from(new Set(arr));
-  }
-
+  function uniq(arr) { return Array.from(new Set(arr)); }
   function normalize(num) {
     const d = String(num || "").replace(/\D/g, "");
     if (d.length >= 10) return d.slice(-10);
     return null;
   }
-
   function findNums(text) {
     const m = String(text || "").match(RE) || [];
     return uniq(m.map(normalize).filter(Boolean));
   }
 
   function getMessageFromApp() {
-    // Try common globals / localStorage
     const globals = ["customSms", "smsTemplate", "messageTemplate", "defaultSms", "smsText"];
     for (const g of globals) {
-      if (window[g] && String(window[g]).trim()) return String(window[g]).trim();
+      if (globalThis[g] && String(globalThis[g]).trim()) return String(globalThis[g]).trim();
     }
     const keys = ["customSms", "smsTemplate", "message", "sms"];
     for (const k of keys) {
@@ -36,7 +49,9 @@
 
   async function ensurePerm() {
     const p = plugin();
-    if (!p) throw new Error("Native SMS not available. Install latest APK build.");
+    const Cap = getCap();
+    const keys = Cap && Cap.Plugins ? Object.keys(Cap.Plugins) : [];
+    if (!p) throw new Error("Native SMS not available. Capacitor.Plugins=" + keys.join(","));
     await p.requestPermission();
   }
 
@@ -53,14 +68,12 @@
   }
 
   function hidePwaHints() {
-    // Hide "Install as PWA First" + "SMS Tip" blocks if present
     const killTexts = ["Install as PWA First", "SMS Tip:", "Real direct SMS works ONLY in installed app"];
     const all = Array.from(document.querySelectorAll("body *"));
     for (const el of all) {
       const t = (el.innerText || "").trim();
       if (!t) continue;
       if (killTexts.some(x => t.includes(x))) {
-        // hide the nearest container
         (el.closest("section") || el.closest("div") || el).style.display = "none";
       }
     }
@@ -68,7 +81,7 @@
 
   async function handleSendAll(btn) {
     try {
-      // numbers from entire page (customer list visible)
+      hidePwaHints();
       const numbers = findNums(document.body.innerText);
       if (!numbers.length) return alert("No numbers found.");
       const msg = getMessageFromApp() || prompt("Type SMS message for ALL customers");
@@ -84,7 +97,7 @@
 
   async function handleSingle(btn) {
     try {
-      // find closest row/card and extract ONE number
+      hidePwaHints();
       const row = btn.closest("div") || document.body;
       const nums = findNums(row.innerText);
       const number = nums.length ? nums[0] : null;
@@ -101,9 +114,11 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", hidePwaHints);
+  document.addEventListener("DOMContentLoaded", function () {
+    hidePwaHints();
+    setTimeout(hidePwaHints, 500);
+  });
 
-  // Capture clicks
   document.addEventListener("click", function (e) {
     const el = e.target;
     const btn = el && el.closest ? el.closest("button") : null;
@@ -111,16 +126,16 @@
 
     const txt = (btn.textContent || "").trim();
 
-    // SEND ALL button (covers "Send to All" + "Send to All in Center")
     if (txt.includes("Send to All")) {
       e.preventDefault(); e.stopPropagation();
       handleSendAll(btn);
       return;
     }
 
-    // Single send: small plane-icon button usually has no text; we detect by presence of a phone number nearby
+    // single send button usually has no text; if a phone number exists in same row, treat as single send
     if (!txt) {
-      const nums = findNums((btn.parentElement && btn.parentElement.innerText) || "");
+      const near = (btn.parentElement && btn.parentElement.innerText) || "";
+      const nums = findNums(near);
       if (nums.length >= 1) {
         e.preventDefault(); e.stopPropagation();
         handleSingle(btn);
